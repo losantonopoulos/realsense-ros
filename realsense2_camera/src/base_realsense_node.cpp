@@ -3,10 +3,35 @@
 #include <boost/algorithm/string.hpp>
 #include <algorithm>
 #include <cctype>
+#include <fstream>
 #include <mutex>
+#include <rosbag/bag.h>
+#include <rosbag/view.h>
+#include <chrono>
+#include <ctime>
+#include <unistd.h>
+#include <string.h>
+#include <iostream>
+#include <vector>
+
+#include <ros/ros.h>
+#include <realsense2_camera/Record.h>
 
 using namespace realsense2_camera;
 using namespace ddynamic_reconfigure;
+
+#define USE_OPENCV_ENCODINGS
+
+// For Recording
+int  bag_counter = 0;
+int  max_count = 3000;
+
+const bool mode_saving = false;
+
+bool rs_saving  = mode_saving;
+bool rs_done    = false;
+
+std::vector<sensor_msgs::ImagePtr> imgs;
 
 // stream_index_pair sip{stream_type, stream_index};
 #define STREAM_NAME(sip) (static_cast<std::ostringstream&&>(std::ostringstream() << _stream_name[sip.first] << ((sip.second>0) ? std::to_string(sip.second) : ""))).str()
@@ -26,7 +51,7 @@ SyncedImuPublisher::~SyncedImuPublisher()
 
 void SyncedImuPublisher::Publish(sensor_msgs::Imu imu_msg)
 {
-    std::lock_guard<std::mutex> lock_guard(_mutex);
+    std::lock_guard<std::mutex> lock_guard(_mutex); 
     if (_pause_mode)
     {
         if (_pending_messages.size() >= _waiting_list_size)
@@ -86,9 +111,10 @@ BaseRealSenseNode::BaseRealSenseNode(ros::NodeHandle& nodeHandle,
     _is_initialized_time_base(false),
     _namespace(getNamespaceStr())
 {
+
     // Types for depth stream
     _image_format[RS2_STREAM_DEPTH] = CV_16UC1;    // CVBridge type
-    _encoding[RS2_STREAM_DEPTH] = sensor_msgs::image_encodings::TYPE_16UC1; // ROS message type
+    _encoding[RS2_STREAM_DEPTH] = sensor_msgs::image_encodings::MONO16; // ROS message type
     _unit_step_size[RS2_STREAM_DEPTH] = sizeof(uint16_t); // sensor_msgs::ImagePtr row step size
     _stream_name[RS2_STREAM_DEPTH] = "depth";
     _depth_aligned_encoding[RS2_STREAM_DEPTH] = sensor_msgs::image_encodings::TYPE_16UC1;
@@ -97,7 +123,7 @@ BaseRealSenseNode::BaseRealSenseNode(ros::NodeHandle& nodeHandle,
     _format[RS2_STREAM_INFRARED] = RS2_FORMAT_Y8;
 
     _image_format[RS2_STREAM_INFRARED] = CV_8UC1;    // CVBridge type
-    _encoding[RS2_STREAM_INFRARED] = sensor_msgs::image_encodings::MONO8; // ROS message type
+    _encoding[RS2_STREAM_INFRARED] = sensor_msgs::image_encodings::TYPE_8UC1; // ROS message type
     _unit_step_size[RS2_STREAM_INFRARED] = sizeof(uint8_t); // sensor_msgs::ImagePtr row step size
     _stream_name[RS2_STREAM_INFRARED] = "infra";
     _depth_aligned_encoding[RS2_STREAM_INFRARED] = sensor_msgs::image_encodings::TYPE_16UC1;
@@ -111,7 +137,7 @@ BaseRealSenseNode::BaseRealSenseNode(ros::NodeHandle& nodeHandle,
 
     // Types for fisheye stream
     _image_format[RS2_STREAM_FISHEYE] = CV_8UC1;    // CVBridge type
-    _encoding[RS2_STREAM_FISHEYE] = sensor_msgs::image_encodings::MONO8; // ROS message type
+    _encoding[RS2_STREAM_FISHEYE] = sensor_msgs::image_encodings::TYPE_8UC1; // ROS message type
     _unit_step_size[RS2_STREAM_FISHEYE] = sizeof(uint8_t); // sensor_msgs::ImagePtr row step size
     _stream_name[RS2_STREAM_FISHEYE] = "fisheye";
     _depth_aligned_encoding[RS2_STREAM_FISHEYE] = sensor_msgs::image_encodings::TYPE_16UC1;
@@ -151,6 +177,38 @@ BaseRealSenseNode::~BaseRealSenseNode()
         }
     }
 }
+
+bool BaseRealSenseNode::record(realsense2_camera::Record::Request  &req, realsense2_camera::Record::Response &res)
+{
+  res.Sum = req.A + req.B;
+
+  return true;
+  //BaseRealSenseNode::startRecording(10);
+
+}
+
+bool BaseRealSenseNode::startRecording(int max_msgs)
+{
+	std::lock_guard<std::mutex> lock_guard(_mutex_frame); 
+
+	ROS_INFO("PID: %d", getpid());
+
+	if(max_msgs <= 0) return false;
+
+	if(rs_saving) return false;
+	
+	max_count = max_msgs;
+
+	bag_counter = 0;
+
+	rs_saving  = true;
+	rs_done    = false;
+
+	imgs.clear();
+
+	return true;
+}
+
 
 void BaseRealSenseNode::toggleSensors(bool enabled)
 {
@@ -406,110 +464,98 @@ void BaseRealSenseNode::registerDynamicOption(ros::NodeHandle& nh, rs2::options 
     {
         rs2_option option = static_cast<rs2_option>(i);
         const std::string option_name(create_graph_resource_name(rs2_option_to_string(option)));
-        try
+        if (!sensor.supports(option) || sensor.is_option_read_only(option))
         {
-            if (!sensor.supports(option) || sensor.is_option_read_only(option))
+            continue;
+        }
+        if (is_checkbox(sensor, option))
+        {
+            auto option_value = bool(sensor.get_option(option));
+            if (nh1.param(option_name, option_value, option_value))
             {
-                continue;
+                sensor.set_option(option, option_value);
             }
-            if (is_checkbox(sensor, option))
+            ddynrec->registerVariable<bool>(
+              option_name, option_value,
+              [option, sensor](bool new_value) { sensor.set_option(option, new_value); },
+              sensor.get_option_description(option));
+            continue;
+        }
+        const auto enum_dict = get_enum_method(sensor, option);
+        if (enum_dict.empty())
+        {
+            rs2::option_range op_range = sensor.get_option_range(option);
+            const auto sensor_option_value = sensor.get_option(option);
+            auto option_value = sensor_option_value;
+            if (nh1.param(option_name, option_value, option_value))
             {
-                auto option_value = bool(sensor.get_option(option));
-                if (nh1.param(option_name, option_value, option_value))
+                if (option_value < op_range.min || op_range.max < option_value)
                 {
-                    sensor.set_option(option, option_value);
-                }
-                ddynrec->registerVariable<bool>(
-                option_name, option_value,
-                [option, sensor](bool new_value) { sensor.set_option(option, new_value); },
-                sensor.get_option_description(option));
-                continue;
-            }
-            const auto enum_dict = get_enum_method(sensor, option);
-            if (enum_dict.empty())
-            {
-                rs2::option_range op_range = sensor.get_option_range(option);
-                const auto sensor_option_value = sensor.get_option(option);
-                auto option_value = sensor_option_value;
-                if (nh1.param(option_name, option_value, option_value))
-                {
-                    if (option_value < op_range.min || op_range.max < option_value)
-                    {
-                        ROS_WARN_STREAM("Param '" << nh1.resolveName(option_name) << "' has value " << option_value
-                                << " outside the range [" << op_range.min << ", " << op_range.max
-                                << "]. Using current sensor value " << sensor_option_value << " instead.");
-                        option_value = sensor_option_value;
-                    }
-                    else
-                    {
-                        sensor.set_option(option, option_value);
-                    }
-                }
-                if (is_int_option(sensor, option))
-                {
-                ddynrec->registerVariable<int>(
-                    option_name, int(option_value),
-                    [option, sensor](int new_value) { sensor.set_option(option, new_value); },
-                    sensor.get_option_description(option), int(op_range.min), int(op_range.max));
+                    ROS_WARN_STREAM("Param '" << nh1.resolveName(option_name) << "' has value " << option_value
+                            << " outside the range [" << op_range.min << ", " << op_range.max
+                            << "]. Using current sensor value " << sensor_option_value << " instead.");
+                    option_value = sensor_option_value;
                 }
                 else
                 {
-                    if (i == RS2_OPTION_DEPTH_UNITS)
-                    {
-                        if (ROS_DEPTH_SCALE >= op_range.min && ROS_DEPTH_SCALE <= op_range.max)
-                        {
-                            sensor.set_option(option, ROS_DEPTH_SCALE);
-                            op_range.min = ROS_DEPTH_SCALE;
-                            op_range.max = ROS_DEPTH_SCALE;
-
-                            _depth_scale_meters = ROS_DEPTH_SCALE;
-                        }
-                    }
-                    else
-                    {
-                    ddynrec->registerVariable<double>(
-                        option_name, option_value,
-                        [option, sensor](double new_value) { sensor.set_option(option, new_value); },
-                        sensor.get_option_description(option), double(op_range.min), double(op_range.max));
-                    }
+                    sensor.set_option(option, option_value);
                 }
+            }
+            if (is_int_option(sensor, option))
+            {
+              ddynrec->registerVariable<int>(
+                  option_name, int(option_value),
+                  [option, sensor](int new_value) { sensor.set_option(option, new_value); },
+                  sensor.get_option_description(option), int(op_range.min), int(op_range.max));
             }
             else
             {
-                const auto sensor_option_value = sensor.get_option(option);
-                auto option_value = int(sensor_option_value);
-                if (nh1.param(option_name, option_value, option_value))
+                if (i == RS2_OPTION_DEPTH_UNITS)
                 {
-                    if (std::find_if(enum_dict.cbegin(), enum_dict.cend(),
-                                    [&option_value](const std::pair<std::string, int>& kv) {
-                                        return kv.second == option_value;
-                                    }) == enum_dict.cend())
+                    if (ROS_DEPTH_SCALE >= op_range.min && ROS_DEPTH_SCALE <= op_range.max)
                     {
-                        ROS_WARN_STREAM("Param '" << nh1.resolveName(option_name) << "' has value " << option_value
-                                                << " that is not in the enum " << enum_dict
-                                                << ". Using current sensor value " << sensor_option_value << " instead.");
-                        option_value = sensor_option_value;
-                    }
-                    else
-                    {
-                        sensor.set_option(option, option_value);
+                        sensor.set_option(option, ROS_DEPTH_SCALE);
+                        op_range.min = ROS_DEPTH_SCALE;
+                        op_range.max = ROS_DEPTH_SCALE;
+
+                        _depth_scale_meters = ROS_DEPTH_SCALE;
                     }
                 }
-                ddynrec->registerEnumVariable<int>(
-                    option_name, option_value,
-                    [option, sensor](int new_value) { sensor.set_option(option, new_value); },
-                    sensor.get_option_description(option), enum_dict);
+                else
+                {
+                  ddynrec->registerVariable<double>(
+                      option_name, option_value,
+                      [option, sensor](double new_value) { sensor.set_option(option, new_value); },
+                      sensor.get_option_description(option), double(op_range.min), double(op_range.max));
+                }
             }
         }
-        catch(const rs2::backend_error& e)
+        else
         {
-            ROS_WARN_STREAM("Failed to set option: " << option_name << ": " << e.what());
+            const auto sensor_option_value = sensor.get_option(option);
+            auto option_value = int(sensor_option_value);
+            if (nh1.param(option_name, option_value, option_value))
+            {
+                if (std::find_if(enum_dict.cbegin(), enum_dict.cend(),
+                                 [&option_value](const std::pair<std::string, int>& kv) {
+                                     return kv.second == option_value;
+                                 }) == enum_dict.cend())
+                {
+                    ROS_WARN_STREAM("Param '" << nh1.resolveName(option_name) << "' has value " << option_value
+                                              << " that is not in the enum " << enum_dict
+                                              << ". Using current sensor value " << sensor_option_value << " instead.");
+                    option_value = sensor_option_value;
+                }
+                else
+                {
+                    sensor.set_option(option, option_value);
+                }
+            }
+            ddynrec->registerEnumVariable<int>(
+                option_name, option_value,
+                [option, sensor](int new_value) { sensor.set_option(option, new_value); },
+                sensor.get_option_description(option), enum_dict);
         }
-        catch(const std::exception& e)
-        {
-            std::cerr << e.what() << '\n';
-        }
-        
     }
     ddynrec->publishServicesTopics();
     _ddynrec.push_back(ddynrec);
@@ -737,6 +783,7 @@ void BaseRealSenseNode::setupDevice()
             {
                 _sensors_callback[module_name] = frame_callback_function;
             }
+            /*
             else if (sensor.is<rs2::color_sensor>())
             {
                 _sensors_callback[module_name] = frame_callback_function;
@@ -753,11 +800,12 @@ void BaseRealSenseNode::setupDevice()
             {
                 _sensors_callback[module_name] = multiple_message_callback_function;
             }
+            */
             else
             {
-                ROS_ERROR_STREAM("Module Name \"" << module_name << "\" isn't supported by LibRealSense! Terminating RealSense Node...");
-                ros::shutdown();
-                exit(1);
+                ROS_ERROR_STREAM("Module Name \"" << module_name << "\" isn't supported by LibRealSense!");
+                //ros::shutdown();
+                //exit(1);
             }
             ROS_INFO_STREAM(std::string(sensor.get_info(RS2_CAMERA_INFO_NAME)) << " was found.");
         }
@@ -806,6 +854,12 @@ void BaseRealSenseNode::setupPublishers()
             std::shared_ptr<FrequencyDiagnostics> frequency_diagnostics(new FrequencyDiagnostics(_fps[stream], stream_name, _serial_no));
             _image_publishers[stream] = {image_transport.advertise(image_raw.str(), 1), frequency_diagnostics};
             _info_publisher[stream] = _node_handle.advertise<sensor_msgs::CameraInfo>(camera_info.str(), 1);
+
+            // Services
+
+            _rec_service = _node_handle.advertiseService("record", BaseRealSenseNode::record);
+		
+            //_add_service = _node_handle.advertiseService("add_two_ints", BaseRealSenseNode::add_two);
 
             if (_align_depth && (stream != DEPTH) && stream.second < 2)
             {
@@ -878,6 +932,8 @@ void BaseRealSenseNode::setupPublishers()
 
 void BaseRealSenseNode::publishAlignedDepthToOthers(rs2::frameset frames, const ros::Time& t)
 {
+	//ROS_INFO("Type: %s",img->header.frame_id.c_str());
+
     for (auto it = frames.begin(); it != frames.end(); ++it)
     {
         auto frame = (*it);
@@ -898,6 +954,7 @@ void BaseRealSenseNode::publishAlignedDepthToOthers(rs2::frameset frames, const 
         if(0 != info_publisher.getNumSubscribers() ||
            0 != image_publisher.first.getNumSubscribers())
         {
+
             std::shared_ptr<rs2::align> align;
             try{
                 align = _align.at(stream_type);
@@ -1451,6 +1508,9 @@ void BaseRealSenseNode::pose_callback(rs2::frame frame)
 
 void BaseRealSenseNode::frame_callback(rs2::frame frame)
 {
+    
+    std::lock_guard<std::mutex> lock_guard(_mutex_frame); 
+
     _synced_imu_publisher->Pause();
     
     try{
@@ -1578,6 +1638,7 @@ void BaseRealSenseNode::frame_callback(rs2::frame frame)
                     continue;
                 }
                 stream_index_pair sip{stream_type,stream_index};
+
                 publishFrame(f, t,
                                 sip,
                                 _image,
@@ -1609,13 +1670,84 @@ void BaseRealSenseNode::frame_callback(rs2::frame frame)
                     clip_depth(frame, _clipping_distance);
                 }
             }
-            publishFrame(frame, t,
+
+            //ROS_INFO("Type: %s",_optical_frame_id.at(sip).c_str());
+            //ROS_INFO("PID: %d", getpid());
+            //ROS_INFO("Mphke");
+            if(rs_saving && mode_saving){
+
+				if(bag_counter < max_count){
+					
+					rs_saving = true;
+					rs_done   = false;
+
+					sensor_msgs::ImagePtr img;
+
+					//publishFrameToMsg(frame, t, sip, _image, _info_publisher, _image_publishers, _seq, _camera_info, _optical_frame_id, _encoding); 
+
+				    unsigned int width = 0;
+				    unsigned int height = 0;
+				    auto bpp = 1;
+
+				    if (frame.is<rs2::video_frame>())
+				    {
+				        auto image = frame.as<rs2::video_frame>();
+				        width = image.get_width();
+				        height = image.get_height();
+				        bpp = image.get_bytes_per_pixel();
+				    }
+				    
+				    auto& image = _image[sip];
+
+				    if (1) //copy_data_from_frame
+				    {
+				        if (_image[sip].size() != cv::Size(width, height))
+				        {
+				            image.create(height, width, image.type());
+				        }
+				        image.data = (uint8_t*)frame.get_data();
+				    }
+
+				    if (frame.is<rs2::depth_frame>())
+				    {
+				        image = fix_depth_scale(image, _depth_scaled_image[sip]);
+				    }
+
+    				++(_seq[sip]);
+    
+					img = cv_bridge::CvImage(std_msgs::Header(), _encoding.at(sip.first), image).toImageMsg();
+					img->width = width;
+					img->height = height;
+					img->is_bigendian = false;
+					img->step = width * bpp;
+					img->header.frame_id = _optical_frame_id.at(sip);
+					img->header.stamp = t;
+					img->header.seq = _seq[sip];
+
+					//mybag.write(img->header.frame_id.c_str(), t, inter);
+
+					imgs.push_back(img);
+					bag_counter++;
+
+				}else{
+
+					rs_saving = false;
+					rs_done   = true;
+
+					save_bag();
+
+					ros::shutdown();
+				}
+
+			}else{
+				publishFrame(frame, t,
                             sip,
                             _image,
                             _info_publisher,
                             _image_publishers, _seq,
                             _camera_info, _optical_frame_id,
-                            _encoding);
+                            _encoding); 
+			}            
         }
     }
     catch(const std::exception& ex)
@@ -1871,6 +2003,62 @@ void BaseRealSenseNode::SetBaseStream()
     _base_stream = *base_stream;
 }
 
+void BaseRealSenseNode::save_bag(){
+
+	// Create Bag object
+	rosbag::Bag bag;
+
+	// Create filename
+    time_t rawtime;
+    struct tm * timeinfo;
+    char buffer[80];
+
+    time (&rawtime);
+    timeinfo = localtime(&rawtime);
+
+    strftime(buffer,sizeof(buffer),"%d_%m_%Y_%H_%M_%S",timeinfo);
+    std::string datetime_str(buffer);
+
+    std::string file;
+
+    file = "/home/angelos/bags/rec_" + datetime_str + ".bag";
+
+    std::cout << "Writting to file: " << file << std::endl;
+
+	// Open Bag file
+    bag.open(file, rosbag::bagmode::Write);
+
+    // Iterate and print values of vector
+    for(sensor_msgs::ImagePtr msg : imgs) {
+
+    	const char* topic_name = msg->header.frame_id.c_str();
+
+    	if(strcmp(topic_name, "camera_depth_optical_frame") == 0){
+
+    		bag.write("/device_0/sensor_0/Depth_0/image/data", msg->header.stamp, msg);
+
+    	}else if(strcmp(topic_name, "camera_infra1_optical_frame") == 0){
+
+    		bag.write("/device_0/sensor_0/Infrared_1/image/data", msg->header.stamp, msg);
+
+    	}else if(strcmp(topic_name, "camera_infra2_optical_frame") == 0){
+
+    		bag.write("/device_0/sensor_0/Infrared_2/image/data", msg->header.stamp, msg);
+
+    	}else{
+    		bag.write(topic_name, msg->header.stamp, msg);
+    	}
+    }
+
+    imgs.clear();
+
+    ROS_INFO("Write complete");
+    
+    bag.close();
+
+    ROS_INFO("Bag Closed");
+}
+
 void BaseRealSenseNode::publishStaticTransforms()
 {
     rs2::stream_profile base_profile = getAProfile(_base_stream);
@@ -1981,7 +2169,7 @@ void reverse_memcpy(unsigned char* dst, const unsigned char* src, size_t n)
 void BaseRealSenseNode::publishPointCloud(rs2::points pc, const ros::Time& t, const rs2::frameset& frameset)
 {
     std::vector<NamedFilter>::iterator pc_filter = find_if(_filters.begin(), _filters.end(), [] (NamedFilter s) { return s._name == "pointcloud"; } );
-    rs2_stream texture_source_id = static_cast<rs2_stream>((int)pc_filter->_filter->get_option(rs2_option::RS2_OPTION_STREAM_FILTER));
+    rs2_stream texture_source_id = static_cast<rs2_stream>(pc_filter->_filter->get_option(rs2_option::RS2_OPTION_STREAM_FILTER));
     bool use_texture = texture_source_id != RS2_STREAM_ANY;
     static int warn_count(0);
     static const int DISPLAY_WARN_NUMBER(5);
@@ -2167,6 +2355,60 @@ IMUInfo BaseRealSenseNode::getImuInfo(const stream_index_pair& stream_index)
     return info;
 }
 
+sensor_msgs::ImagePtr BaseRealSenseNode::publishFrameToMsg(rs2::frame f, const ros::Time& t,
+                                     const stream_index_pair& stream,
+                                     std::map<stream_index_pair, cv::Mat>& images,
+                                     const std::map<stream_index_pair, ros::Publisher>& info_publishers,
+                                     const std::map<stream_index_pair, ImagePublisherWithFrequencyDiagnostics>& image_publishers,
+                                     std::map<stream_index_pair, int>& seq,
+                                     std::map<stream_index_pair, sensor_msgs::CameraInfo>& camera_info,
+                                     const std::map<stream_index_pair, std::string>& optical_frame_id,
+                                     const std::map<rs2_stream, std::string>& encoding,
+                                     bool copy_data_from_frame)
+{
+
+	sensor_msgs::ImagePtr img;
+
+	ROS_DEBUG("publishFrameToMsg(...)");
+    unsigned int width = 0;
+    unsigned int height = 0;
+    auto bpp = 1;
+    if (f.is<rs2::video_frame>())
+    {
+        auto image = f.as<rs2::video_frame>();
+        width = image.get_width();
+        height = image.get_height();
+        bpp = image.get_bytes_per_pixel();
+    }
+    auto& image = images[stream];
+
+    if (copy_data_from_frame)
+    {
+        if (images[stream].size() != cv::Size(width, height))
+        {
+            image.create(height, width, image.type());
+        }
+        image.data = (uint8_t*)f.get_data();
+    }
+    if (f.is<rs2::depth_frame>())
+    {
+        image = fix_depth_scale(image, _depth_scaled_image[stream]);
+    }
+
+    ++(seq[stream]);
+    
+	img = cv_bridge::CvImage(std_msgs::Header(), encoding.at(stream.first), image).toImageMsg();
+	img->width = width;
+	img->height = height;
+	img->is_bigendian = false;
+	img->step = width * bpp;
+	img->header.frame_id = optical_frame_id.at(stream);
+	img->header.stamp = t;
+	img->header.seq = seq[stream];
+
+	return img;
+}
+
 void BaseRealSenseNode::publishFrame(rs2::frame f, const ros::Time& t,
                                      const stream_index_pair& stream,
                                      std::map<stream_index_pair, cv::Mat>& images,
@@ -2227,9 +2469,11 @@ void BaseRealSenseNode::publishFrame(rs2::frame f, const ros::Time& t,
         }
         cam_info.header.stamp = t;
         cam_info.header.seq = seq[stream];
+        
         info_publisher.publish(cam_info);
-
+ 
         image_publisher.first.publish(img);
+
         image_publisher.second->update();
         // ROS_INFO_STREAM("fid: " << cam_info.header.seq << ", time: " << std::setprecision (20) << t.toSec());
         ROS_DEBUG("%s stream published", rs2_stream_to_string(f.get_profile().stream_type()));

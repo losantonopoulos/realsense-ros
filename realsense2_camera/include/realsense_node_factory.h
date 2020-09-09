@@ -58,6 +58,7 @@ namespace realsense2_camera
         virtual ~RealSenseNodeFactory();
 
     private:
+        
         void closeDevice();
         void StartDevice();
         void change_device_callback(rs2::event_information& info);

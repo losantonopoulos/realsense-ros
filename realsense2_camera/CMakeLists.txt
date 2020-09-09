@@ -5,8 +5,7 @@ add_compile_options(-std=c++11)
 option(BUILD_WITH_OPENMP "Use OpenMP" OFF)
 option(SET_USER_BREAK_AT_STARTUP "Set user wait point in startup (for debug)" OFF)
 
-add_definitions(-D_CRT_SECURE_NO_WARNINGS)
-set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+find_package(OpenCV 3.4 REQUIRED)
 
 find_package(catkin REQUIRED COMPONENTS
     message_generation
@@ -18,6 +17,8 @@ find_package(catkin REQUIRED COMPONENTS
     cv_bridge
     image_transport
     tf
+    roslib
+    rosbag
     ddynamic_reconfigure
     diagnostic_updater
     )
@@ -37,12 +38,7 @@ if(SET_USER_BREAK_AT_STARTUP)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DBPDEBUG")
 endif()
 
-if (WIN32)
-find_package(realsense2 CONFIG REQUIRED)
-else()
-find_package(realsense2 2.38.1)
-endif()
-
+find_package(realsense2 2.35.2)
 if(NOT realsense2_FOUND)
     message(FATAL_ERROR "\n\n Intel RealSense SDK 2.0 is missing, please install it from https://github.com/IntelRealSense/librealsense/releases\n\n")
 endif()
@@ -59,16 +55,18 @@ else()
     message(STATUS "Create Debug Build.")
 endif()
 
-if (WIN32)
-else()
 set(CMAKE_CXX_FLAGS "-fPIE -fPIC -std=c++11 -D_FORTIFY_SOURCE=2 -fstack-protector -Wformat -Wformat-security -Wall ${CMAKE_CXX_FLAGS}")
-endif()
 
 add_message_files(
     FILES
     IMUInfo.msg
     Extrinsics.msg
     )
+
+add_service_files(
+  FILES
+  Record.srv
+)
 
 generate_messages(
     DEPENDENCIES
@@ -79,6 +77,7 @@ generate_messages(
 set(CMAKE_NO_SYSTEM_FROM_IMPORTED true)
 include_directories(
     include
+    ${OpenCV_INCLUDE_DIRS}
     ${realsense2_INCLUDE_DIR}
     ${catkin_INCLUDE_DIRS}
     )
@@ -92,6 +91,7 @@ catkin_package(
     image_transport
     ddynamic_reconfigure
     nav_msgs
+    rosbag
     )
 
 add_library(${PROJECT_NAME}
@@ -107,6 +107,23 @@ add_library(${PROJECT_NAME}
 add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_generate_messages_cpp)
 add_dependencies(${PROJECT_NAME} ${catkin_EXPORTED_TARGETS})
 
+
+add_executable(stream_extractor src/stream_extractor.cpp)
+
+target_link_libraries(stream_extractor 
+    ${realsense2_LIBRARY}
+    ${OpenCV_LIBRARIES}
+    ${catkin_LIBRARIES}
+)
+
+
+add_executable(rosbag_converter src/rosbag_converter.cpp)
+
+target_link_libraries(rosbag_converter 
+    ${realsense2_LIBRARY}
+    ${catkin_LIBRARIES}
+)
+
 target_include_directories(${PROJECT_NAME}
   PRIVATE ${realsense2_INCLUDE_DIR})
 
@@ -115,15 +132,6 @@ target_link_libraries(${PROJECT_NAME}
     ${catkin_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
     )
-
-if(WIN32)
-set_target_properties(${realsense2_LIBRARY} PROPERTIES MAP_IMPORTED_CONFIG_RELWITHDEBINFO RELEASE)
-target_link_libraries(${PROJECT_NAME}
-    realsense2::realsense2 
-    realsense2::realsense-file
-    )
-endif()
-
 
 # Install nodelet library
 install(TARGETS ${PROJECT_NAME}
