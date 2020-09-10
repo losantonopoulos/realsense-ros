@@ -29,6 +29,10 @@
   <arg name="enable_infra1"       default="true"/>
   <arg name="enable_infra2"       default="true"/>
 
+  <arg name="saving_mode"               default="false"/>
+  <arg name="bag_space"                 default="~/bags/"/>
+  <arg name="saved_frames_num"          default="3200"/>
+
   <arg name="color_width"         default="640"/>
   <arg name="color_height"        default="480"/>
   <arg name="enable_color"        default="false"/>
@@ -78,6 +82,11 @@
       <arg name="enable_sync"              value="$(arg enable_sync)"/>
       <arg name="align_depth"              value="$(arg align_depth)"/>
 
+      <arg name="saving_mode"              value="$(arg saving_mode)"/>
+      <arg name="bag_space"                value="$(arg bag_space)"/>
+      <arg name="saved_frames_num"         value="$(arg saved_frames_num)"/>
+
+
       <arg name="fisheye_width"            value="$(arg fisheye_width)"/>
       <arg name="fisheye_height"           value="$(arg fisheye_height)"/>
       <arg name="enable_fisheye"           value="$(arg enable_fisheye)"/>
@@ -119,6 +128,6 @@
     </include>
   </group>
 
-  <node name="orb_slam_2_stereo" pkg="ORB_SLAM2" type="Stereo" args="/home/angelos/Packages/ORB_SLAM2/Vocabulary/ORBvoc.txt /home/angelos/Packages/ORB_SLAM2/Examples/Stereo/realsense.yaml false" />
+  <node name="orb_slam_2_stereo" pkg="ORB_SLAM2" type="Stereo" args="/home/ubuntu/Packages/ORB_SLAM2/Vocabulary/ORBvoc.txt /home/angelos/Packages/ORB_SLAM2/Examples/Stereo/realsense.yaml false" />
 
 </launch>
