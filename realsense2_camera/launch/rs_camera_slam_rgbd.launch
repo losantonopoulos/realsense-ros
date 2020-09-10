@@ -1,7 +1,7 @@
 <launch>
 
-  <remap from="/camera/infra1/image_rect_raw" to="/camera/left/image_raw"/>
-  <remap from="/camera/infra2/image_rect_raw" to="/camera/right/image_raw"/>
+  <remap from="/camera/infra1/image_rect_raw" to="/camera/rgb/image_raw"/>
+  <remap from="/camera/depth/image_rect_raw"  to="/camera/depth_registered/image_raw"/>
 
   <rosparam>
   /camera/stereo_module/emitter_enabled: 0
@@ -38,8 +38,8 @@
   <arg name="enable_color"        default="false"/>
 
   <arg name="fisheye_fps"         default="15"/>
-  <arg name="depth_fps"           default="90"/>
-  <arg name="infra_fps"           default="90"/>
+  <arg name="depth_fps"           default="60"/>
+  <arg name="infra_fps"           default="60"/>
   <arg name="color_fps"           default="15"/>
   <arg name="gyro_fps"            default="15"/>
   <arg name="accel_fps"           default="250"/>
@@ -128,6 +128,6 @@
     </include>
   </group>
 
-  <node name="orb_slam_2_stereo" pkg="ORB_SLAM2" type="Stereo" args="/home/angelos/Packages/ORB_SLAM2/Vocabulary/ORBvoc.txt /home/angelos/Packages/ORB_SLAM2/Examples/Stereo/realsense.yaml false" />
+  <node name="orb_slam_2_rgbd" pkg="ORB_SLAM2" type="RGBD" args="/home/ubuntu/Packages/ORB_SLAM2/Vocabulary/ORBvoc.txt /home/ubuntu/Packages/ORB_SLAM2/Examples/RGB-D/realsense_d415.yaml" />
 
 </launch>
