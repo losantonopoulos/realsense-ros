@@ -128,6 +128,6 @@
     </include>
   </group>
 
-  <node name="orb_slam_2_stereo" pkg="ORB_SLAM2" type="Stereo" args="/home/ubuntu/Packages/ORB_SLAM2/Vocabulary/ORBvoc.txt /home/angelos/Packages/ORB_SLAM2/Examples/Stereo/realsense.yaml false" />
+  <node name="orb_slam_2_stereo" pkg="ORB_SLAM2" type="Stereo" args="/home/ubuntu/Packages/ORB_SLAM2/Vocabulary/ORBvoc.txt /home/ubuntu/Packages/ORB_SLAM2/Examples/Stereo/realsense.yaml false" />
 
 </launch>
