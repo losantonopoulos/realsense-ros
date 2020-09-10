@@ -43,6 +43,10 @@
   <arg name="pointcloud_texture_stream" default="RS2_STREAM_COLOR"/>
   <arg name="pointcloud_texture_index"  default="0"/>
 
+  <arg name="saving_mode"               default="true"/>
+  <arg name="bag_space"                 default="~/bags/"/>
+  <arg name="saved_frames_num"          default="3200"/>
+
   <arg name="enable_sync"               default="false"/>
   <arg name="align_depth"               default="false"/>
 
@@ -68,6 +72,10 @@
       <arg name="usb_port_id"              value="$(arg usb_port_id)"/>
       <arg name="device_type"              value="$(arg device_type)"/>
       <arg name="json_file_path"           value="$(arg json_file_path)"/>
+
+      <arg name="saving_mode"              value="$(arg saving_mode)"/>
+      <arg name="bag_space"                value="$(arg bag_space)"/>
+      <arg name="saved_frames_num"         value="$(arg saved_frames_num)"/>
 
       <arg name="enable_pointcloud"        value="$(arg enable_pointcloud)"/>
       <arg name="pointcloud_texture_stream" value="$(arg pointcloud_texture_stream)"/>

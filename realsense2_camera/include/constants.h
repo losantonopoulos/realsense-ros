@@ -37,7 +37,7 @@ namespace realsense2_camera
     const uint16_t RS_L515_PID_PRE_PRQ = 0x0B3D; // 
     const uint16_t RS_L515_PID      = 0x0B64; // 
     
-
+    const bool SAVE_MODE      = false;
     const bool ALIGN_DEPTH    = false;
     const bool POINTCLOUD     = false;
     const bool ALLOW_NO_TEXTURE_POINTS = false;
@@ -52,6 +52,8 @@ namespace realsense2_camera
 
     const int IMU_FPS         = 0;
 
+    const int DEFAULT_MAX_FRAMES      = 3000;
+
 
     const bool ENABLE_DEPTH   = true;
     const bool ENABLE_INFRA1  = true;
@@ -62,7 +64,7 @@ namespace realsense2_camera
     const bool HOLD_BACK_IMU_FOR_FRAMES = false;
     const bool PUBLISH_ODOM_TF = true;
 
-
+    const std::string DEFAULT_BAG_SPACE                = "~/bags/";
     const std::string DEFAULT_BASE_FRAME_ID            = "camera_link";
     const std::string DEFAULT_ODOM_FRAME_ID            = "odom_frame";
     const std::string DEFAULT_DEPTH_FRAME_ID           = "camera_depth_frame";

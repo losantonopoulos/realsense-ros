@@ -46,6 +46,10 @@
   <arg name="enable_sync"         default="false"/>
   <arg name="align_depth"         default="false"/>
 
+  <arg name="saving_mode"         default="false"/>
+  <arg name="bag_space"           default="~/bags/"/>
+  <arg name="saved_frames_num"    default="3000"/>
+
   <arg name="base_frame_id"             default="$(arg tf_prefix)_link"/>
   <arg name="depth_frame_id"            default="$(arg tf_prefix)_depth_frame"/>
   <arg name="infra1_frame_id"           default="$(arg tf_prefix)_infra1_frame"/>
@@ -99,6 +103,11 @@
     <param name="device_type"              type="str"  value="$(arg device_type)"/>
     <param name="json_file_path"           type="str"  value="$(arg json_file_path)"/>
     <param name="rosbag_filename"          type="str"  value="$(arg rosbag_filename)"/>
+
+    <param name="saving_mode"              type="bool" value="$(arg saving_mode)"/>
+    <param name="bag_space"                type="str" value="$(arg bag_space)"/>
+    <param name="saved_frames_num"         type="int" value="$(arg saved_frames_num)"/>
+    
 
     <param name="enable_pointcloud"        type="bool" value="$(arg enable_pointcloud)"/>
     <param name="pointcloud_texture_stream" type="str" value="$(arg pointcloud_texture_stream)"/>

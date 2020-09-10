@@ -1,4 +1,9 @@
 <launch>
+
+  <rosparam>
+  /camera/stereo_module/emitter_enabled: 0
+  </rosparam>
+  
   <arg name="serial_no"           default=""/>
   <arg name="usb_port_id"         default=""/>
   <arg name="device_type"         default=""/>
@@ -12,24 +17,24 @@
   <arg name="fisheye_height"      default="480"/>
   <arg name="enable_fisheye"      default="false"/>
 
-  <arg name="depth_width"         default="640"/>
+  <arg name="depth_width"         default="848"/>
   <arg name="depth_height"        default="480"/>
   <arg name="enable_depth"        default="true"/>
 
-  <arg name="infra_width"        default="640"/>
+  <arg name="infra_width"        default="848"/>
   <arg name="infra_height"       default="480"/>
-  <arg name="enable_infra1"       default="false"/>
-  <arg name="enable_infra2"       default="false"/>
+  <arg name="enable_infra1"       default="true"/>
+  <arg name="enable_infra2"       default="true"/>
 
   <arg name="color_width"         default="640"/>
   <arg name="color_height"        default="480"/>
-  <arg name="enable_color"        default="true"/>
+  <arg name="enable_color"        default="false"/>
 
-  <arg name="fisheye_fps"         default="30"/>
-  <arg name="depth_fps"           default="30"/>
-  <arg name="infra_fps"           default="30"/>
-  <arg name="color_fps"           default="30"/>
-  <arg name="gyro_fps"            default="400"/>
+  <arg name="fisheye_fps"         default="15"/>
+  <arg name="depth_fps"           default="90"/>
+  <arg name="infra_fps"           default="90"/>
+  <arg name="color_fps"           default="15"/>
+  <arg name="gyro_fps"            default="15"/>
   <arg name="accel_fps"           default="250"/>
   <arg name="enable_gyro"         default="false"/>
   <arg name="enable_accel"        default="false"/>
@@ -38,10 +43,14 @@
   <arg name="pointcloud_texture_stream" default="RS2_STREAM_COLOR"/>
   <arg name="pointcloud_texture_index"  default="0"/>
 
+  <arg name="saving_mode"               default="false"/>
+  <arg name="bag_space"                 default="~/bags/"/>
+  <arg name="saved_frames_num"          default="3200"/>
+
   <arg name="enable_sync"               default="false"/>
   <arg name="align_depth"               default="false"/>
 
-  <arg name="publish_tf"                default="true"/>
+  <arg name="publish_tf"                default="false"/>
   <arg name="tf_publish_rate"           default="0"/>
 
   <arg name="filters"                   default=""/>
@@ -51,7 +60,7 @@
   <arg name="unite_imu_method"          default=""/>
   <arg name="topic_odom_in"             default="odom_in"/>
   <arg name="calib_odom_file"           default=""/>
-  <arg name="publish_odom_tf"           default="true"/>
+  <arg name="publish_odom_tf"           default="false"/>
   <arg name="allow_no_texture_points"   default="false"/>
 
   <group ns="$(arg camera)">
@@ -63,6 +72,10 @@
       <arg name="usb_port_id"              value="$(arg usb_port_id)"/>
       <arg name="device_type"              value="$(arg device_type)"/>
       <arg name="json_file_path"           value="$(arg json_file_path)"/>
+
+      <arg name="saving_mode"              value="$(arg saving_mode)"/>
+      <arg name="bag_space"                value="$(arg bag_space)"/>
+      <arg name="saved_frames_num"         value="$(arg saved_frames_num)"/>
 
       <arg name="enable_pointcloud"        value="$(arg enable_pointcloud)"/>
       <arg name="pointcloud_texture_stream" value="$(arg pointcloud_texture_stream)"/>
@@ -110,4 +123,5 @@
       <arg name="allow_no_texture_points"  value="$(arg allow_no_texture_points)"/>
     </include>
   </group>
+
 </launch>

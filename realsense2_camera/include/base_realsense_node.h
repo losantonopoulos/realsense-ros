@@ -29,6 +29,7 @@
 #include <atomic>
 #include <thread>
 
+
 namespace realsense2_camera
 {
     struct FrequencyDiagnostics
@@ -161,11 +162,13 @@ namespace realsense2_camera
         bool _is_running;
         std::string _base_frame_id;
         std::string _odom_frame_id;
+        std::string _bag_space;
         std::map<stream_index_pair, std::string> _frame_id;
         std::map<stream_index_pair, std::string> _optical_frame_id;
         std::map<stream_index_pair, std::string> _depth_aligned_frame_id;
         ros::NodeHandle& _node_handle, _pnh;
         bool _align_depth;
+        bool _save_mode;
         std::vector<rs2_option> _monitor_options;
 
         virtual void calcAndPublishStaticTransform(const stream_index_pair& stream, const rs2::stream_profile& base_profile);
@@ -276,6 +279,7 @@ namespace realsense2_camera
         float _depth_scale_meters;
         float _clipping_distance;
         bool _allow_no_texture_points;
+        int _max_frames;
 
         double _linear_accel_cov;
         double _angular_velocity_cov;

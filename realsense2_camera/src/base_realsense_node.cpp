@@ -24,11 +24,9 @@ using namespace ddynamic_reconfigure;
 
 // For Recording
 int  bag_counter = 0;
-int  max_count = 3000;
+int  max_count = DEFAULT_MAX_FRAMES;
 
-const bool mode_saving = false;
-
-bool rs_saving  = mode_saving;
+bool rs_saving  = false;
 bool rs_done    = false;
 
 std::vector<sensor_msgs::ImagePtr> imgs;
@@ -598,6 +596,15 @@ rs2_stream BaseRealSenseNode::rs2_string_to_stream(std::string str)
 void BaseRealSenseNode::getParameters()
 {
     ROS_INFO("getParameters...");
+
+    _pnh.param("saving_mode", _save_mode, SAVE_MODE);
+    _pnh.param("bag_space",   _bag_space, DEFAULT_BAG_SPACE);
+    _pnh.param("saved_frames_num",   _max_frames, DEFAULT_MAX_FRAMES);
+    
+    rs_saving = _save_mode;
+    max_count = _max_frames;
+
+    if(_save_mode) ROS_INFO("Saving: %d Frames", _max_frames);
 
     _pnh.param("align_depth", _align_depth, ALIGN_DEPTH);
     _pnh.param("enable_pointcloud", _pointcloud, POINTCLOUD);
@@ -1674,7 +1681,7 @@ void BaseRealSenseNode::frame_callback(rs2::frame frame)
             //ROS_INFO("Type: %s",_optical_frame_id.at(sip).c_str());
             //ROS_INFO("PID: %d", getpid());
             //ROS_INFO("Mphke");
-            if(rs_saving && mode_saving){
+            if(rs_saving && _save_mode){
 
 				if(bag_counter < max_count){
 					
@@ -2021,12 +2028,41 @@ void BaseRealSenseNode::save_bag(){
 
     std::string file;
 
-    file = "/home/angelos/bags/rec_" + datetime_str + ".bag";
+    int count_temp = strlen(_bag_space.c_str()) - 1;
 
-    std::cout << "Writting to file: " << file << std::endl;
+    char file_path[500];
 
+    while(count_temp>=0){
+
+        if(_bag_space[count_temp] == ' '){
+
+          count_temp--;
+          continue;
+
+        }else if(_bag_space[count_temp] == '/'){
+
+          strncpy(file_path, _bag_space.c_str(), count_temp + 1);
+          file_path[count_temp + 1] = NULL;
+
+          break;
+        }else{
+
+          strncpy(file_path, _bag_space.c_str(), count_temp + 1);
+          file_path[count_temp + 1] = '/';
+          file_path[count_temp + 2] = NULL;
+
+          break;
+        }
+
+    }
+
+    file = file_path;
+    file = file + "rec_" + datetime_str + ".bag";
+    
 	// Open Bag file
     bag.open(file, rosbag::bagmode::Write);
+
+    std::cout << "Writting to file: " << file << std::endl;
 
     // Iterate and print values of vector
     for(sensor_msgs::ImagePtr msg : imgs) {
